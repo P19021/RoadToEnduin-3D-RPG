@@ -51,7 +51,8 @@ public class PlayerController : MonoBehaviour
     public GameObject cameraTarget;
 
     [Tooltip("How sensitive will the rotation of the camera be")]
-    public float mouseSensitivity = 1.0f;
+    [Range(0.1f, 1.0f)]
+    public float mouseSensitivity = 0.5f;
 
     [Tooltip("How far in degrees can you move the camera up")]
     public float topClamp = 70.0f;
@@ -94,11 +95,11 @@ public class PlayerController : MonoBehaviour
     Vector3 moveDirection;
     Vector2 lookDirection;
 
-    bool _isSprinting = false;
-    bool canJump;
 
  //---------------------------------------------------------------END OF DECLARATIONS SECTION--------------------------------------------------------------
 
+
+//----------------------------------------------------------------METHODS SECTION--------------------------------------------------------------------------
     void Awake()
     {
         
@@ -198,10 +199,8 @@ public class PlayerController : MonoBehaviour
             {
                 _moveSpeed = moveSpeed;
                 
-                //Set bool to false again, just in case
-                _isSprinting = false;
             }
-            
+            //Finds the tan line, which depicts the linear direction of our target rotation
             _targetRotation = Mathf.Atan2(moveDirection.x, moveDirection.y) * Mathf.Rad2Deg +
                                   _mainCamera.transform.eulerAngles.y;
             float rotation = Mathf.SmoothDampAngle(transform.eulerAngles.y, _targetRotation, ref _rotationVelocity,
@@ -257,7 +256,6 @@ public class PlayerController : MonoBehaviour
                 _fallTimeoutDelta -= Time.deltaTime;
             }
 
-            canJump = false; //Cannot jump while falling
         }
 
         if (_verticalVelocity < _terminalVelocity)
@@ -271,12 +269,6 @@ public class PlayerController : MonoBehaviour
     void Attack(InputAction.CallbackContext context)
     {
         Debug.Log("Attack context: " + context);
-    }
-
-    //Sprint System, to be implemented
-    void  Sprint(InputAction.CallbackContext context)
-    {
-        _isSprinting = true;
     }
 
 
@@ -302,7 +294,6 @@ public class PlayerController : MonoBehaviour
         //Jump System
         playerJump = playerControls.Player.Jump;
         playerJump.Enable();
-        //playerJump.performed += Jump;
 
         //Attack System
         playerAttack = playerControls.Player.Attack;
@@ -312,13 +303,9 @@ public class PlayerController : MonoBehaviour
         //Sprint System
         playerSprint = playerControls.Player.Sprint;
         playerSprint.Enable();
-        playerSprint.performed += Sprint;
 
     }
 
-  
-
-    
 
     //Disable input systems 
     void OnDisable()
