@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -6,8 +7,9 @@ using UnityEngine.InputSystem;
 //Version 1.0
 public class PlayerController : MonoBehaviour
 {
+//---------------------------------------------------------------DECLARATIONS SECTION----------------------------------------------------------------------
 
-    //Player settings
+    //Player Settings------------------------------------------------------------------------------------------------------------
     [Header("Player")]
     [Tooltip("How fast the player moves while walking")]
     public float moveSpeed = 5.0f;
@@ -17,6 +19,29 @@ public class PlayerController : MonoBehaviour
 
     [Tooltip("How high can the player jump")]
     public float jumpHeight = 1.5f;
+
+    [Tooltip("The player has a different gravity multiplier")]
+    public float playerGravity = -15.0f;
+
+    //Ground Settings------------------------------------------------------------------------------------------------------------
+    [Header("Ground Settings")]
+    [Tooltip("Is the player on the ground?")]
+    public bool isGrounded = true;
+
+    [Tooltip("Offset used to calculate ground boundaries")]
+    public float groundedOffset = 0.78f;
+
+    [Tooltip("The radius used to check if player is grounded. Should match the radius of Character Controller")]
+    public float groundedRadius = 0.5000001f;
+
+    [Tooltip("The time the player must wait before jumping again")]
+    public float jumpCooldown = 0.5f;
+
+    [Tooltip("Time required to enter falling state. Useful for walking down stairs and steep hills")]
+    public float fallTimeout = 0.15f;
+
+    [Tooltip("All layers that are considered ground")]
+    public LayerMask groundLayers;
 
 
     //Camera Settings------------------------------------------------------------------------------------------------------------
@@ -43,11 +68,17 @@ public class PlayerController : MonoBehaviour
     CharacterController _controller;
 
     //Private Variables-----------------------------------------------------------------------------------------------------------------
-    float _moveSpeed;
+    float _moveSpeed; //Stores ground velocity for the player
     float _targetRotation = 0.0f;
-    float _rotationVelocity;
-    float _cinemachineTargetYaw;
-    float _cinemachineTargetPitch;
+    float _rotationVelocity; //How fast the player rotates
+    float _verticalVelocity; //Used when jumping or falling
+    float _cinemachineTargetYaw; //Horizontal axis camera movement
+    float _cinemachineTargetPitch; //Vertical axis camera movement
+    float _terminalVelocity = 53.0f; //Maximum velocity able to be reached
+
+    //Fall and Jump Delta---------------------------------------------------------------------------------------------------------------
+    [SerializeField] float _fallTimeoutDelta;
+    [SerializeField] float _jumpCooldownDelta;
 
     //Player Input----------------------------------------------------------------------------------------------------------------------
     public PlayerInputActions playerControls;
@@ -64,9 +95,9 @@ public class PlayerController : MonoBehaviour
     Vector2 lookDirection;
 
     bool _isSprinting = false;
+    bool canJump;
 
-
-
+ //---------------------------------------------------------------END OF DECLARATIONS SECTION--------------------------------------------------------------
 
     void Awake()
     {
@@ -83,10 +114,14 @@ public class PlayerController : MonoBehaviour
     // Start is called before the first frame update
     void Start()
     {
-        _controller = GetComponent<CharacterController>();
+        _controller = GetComponent<CharacterController>(); //Fetch the CharacterController component
+        
+        _cinemachineTargetYaw = cameraTarget.transform.rotation.eulerAngles.y; //Set the camera 
+        
+        Cursor.lockState = CursorLockMode.Locked; //Lock the cursor
 
-        _cinemachineTargetYaw = cameraTarget.transform.rotation.eulerAngles.y;
-        Cursor.lockState = CursorLockMode.Locked;
+        _fallTimeoutDelta = fallTimeout;
+        _jumpCooldownDelta = jumpCooldown;
  
     }
   
@@ -95,32 +130,21 @@ public class PlayerController : MonoBehaviour
 
     // Update is called once per frame
     void Update()
-    {
-
+    {  
+        GravitySystem();
+       
+        Move();
     }
 
     
 
-    void FixedUpdate()
+    void LateUpdate()
     {
-        Move();
+        CheckGrounded();
+
         RotateCamera();
     }
 
-      
-
-    void Jump(InputAction.CallbackContext context)
-    {
-        float jumpHeight = transform.position.y;
-        while (jumpHeight < 0.5f)
-        {
-            jumpHeight = Mathf.Lerp(transform.position.y, 0.5f, 1.5f);
-            transform.position += new Vector3(0, jumpHeight, 0);
-        }
-    }
-
-    //Algorithmos papapap
-   
 
     void RotateCamera()
     {
@@ -139,6 +163,18 @@ public class PlayerController : MonoBehaviour
         cameraTarget.transform.rotation = Quaternion.Euler(_cinemachineTargetPitch,
                _cinemachineTargetYaw, 0.0f);
     }
+
+
+    void CheckGrounded()
+    {
+        // Set sphere position, with offset
+        Vector3 spherePosition = new Vector3(transform.position.x, transform.position.y - groundedOffset,
+            transform.position.z);
+        //Checks if the nearby imaginary sphere meets the requirements to be ground for the player
+        isGrounded = Physics.CheckSphere(spherePosition, groundedRadius, groundLayers,
+            QueryTriggerInteraction.Ignore);
+    }
+
 
 
     void Move()
@@ -179,9 +215,57 @@ public class PlayerController : MonoBehaviour
         Vector3 newDirection = Quaternion.Euler(0.0f, _targetRotation, 0.0f) * Vector3.forward;
 
         // Move the player
-        _controller.Move(newDirection.normalized * (_moveSpeed * Time.deltaTime));
+        _controller.Move(newDirection.normalized * (_moveSpeed * Time.deltaTime) //Calculate movement in horizontal axis
+            + new Vector3(0.0f, _verticalVelocity, 0.0f) * Time.deltaTime) ; //and add movement to the vertical axis
     }
 
+
+    void GravitySystem()
+    {
+
+        if (isGrounded)
+        {
+            //Reset fall timer
+            _fallTimeoutDelta = fallTimeout;
+
+            if (_verticalVelocity < 0.0f)
+            {
+                _verticalVelocity = -2f;
+            }
+
+            if (_jumpCooldownDelta >= 0.0f)
+            {
+                _jumpCooldownDelta -= Time.deltaTime;
+            }
+
+            if (playerJump.WasPressedThisFrame() && _jumpCooldownDelta < 0.0f)
+            {
+                //Velocity needed to reach a certain height is given by the physics equation Vf = SquareRoot(2*g*h).
+                //We multiply by -2 because gravity is a negative number 
+                _verticalVelocity = Mathf.Sqrt(-2f * playerGravity * jumpHeight);
+
+            }
+
+        }
+        else
+        {
+            //Reset jump cooldown
+            _jumpCooldownDelta = jumpCooldown;
+
+            if (_fallTimeoutDelta >= 0.0f)
+            {
+                _fallTimeoutDelta -= Time.deltaTime;
+            }
+
+            canJump = false; //Cannot jump while falling
+        }
+
+        if (_verticalVelocity < _terminalVelocity)
+        {
+            _verticalVelocity += playerGravity * Time.deltaTime;
+        }
+
+    }
 
     //Attack system, to be implemented
     void Attack(InputAction.CallbackContext context)
@@ -218,7 +302,7 @@ public class PlayerController : MonoBehaviour
         //Jump System
         playerJump = playerControls.Player.Jump;
         playerJump.Enable();
-        playerJump.performed += Jump;
+        //playerJump.performed += Jump;
 
         //Attack System
         playerAttack = playerControls.Player.Attack;
@@ -232,6 +316,10 @@ public class PlayerController : MonoBehaviour
 
     }
 
+  
+
+    
+
     //Disable input systems 
     void OnDisable()
     {
@@ -240,5 +328,19 @@ public class PlayerController : MonoBehaviour
         playerLook.Disable();
         playerAttack.Disable();
         playerSprint.Disable();
+    }
+
+    private void OnDrawGizmosSelected()
+    {
+        Color transparentGreen = new Color(0.0f, 1.0f, 0.0f, 0.35f);
+        Color transparentRed = new Color(1.0f, 0.0f, 0.0f, 0.35f);
+
+        if (isGrounded) Gizmos.color = transparentGreen;
+        else Gizmos.color = transparentRed;
+
+        // when selected, draw a gizmo in the position of, and matching radius of, the grounded collider
+        Gizmos.DrawSphere(
+            new Vector3(transform.position.x, transform.position.y - groundedOffset, transform.position.z),
+            groundedRadius);
     }
 }
