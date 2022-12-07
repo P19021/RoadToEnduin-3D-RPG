@@ -5,13 +5,11 @@ using UnityEngine;
 public interface IInteractable
 {
     //Abstract methods used by interactable objects
-    void OnInteract();
-
+    void OnInteract(Interactor interactor);
 
     void OnReadyInteract();
 
-
-    void OnStartInteract();
+    void OnCancelInteract();
 
     void OnEndInteract();
     
